@@ -3,12 +3,15 @@ import {
   FaBookOpen,
   FaGithub,
   FaHome,
+  FaMoon,
   FaRss,
+  FaSun,
   FaTelegramPlane,
   FaTwitter,
 } from "react-icons/fa";
 
 type Language = "en" | "zh";
+type Theme = "light" | "dark";
 type FeedState = "loading" | "ready" | "error";
 
 type Post = {
@@ -48,6 +51,18 @@ const copy = {
     visitBlog: "Visit blog",
     subscribe: "Subscribe",
     avatarAlt: "Sanae's avatar",
+    switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode",
+    skipToContent: "Skip to main content",
+    sidebarLabel: "Site sidebar",
+    primaryNavigation: "Primary navigation",
+    onlineProfiles: "Online profiles",
+    languageSelector: "Language selector",
+    useEnglish: "Use English",
+    useChinese: "使用中文",
+    pronunciation: "pronounced /'sɑːnɑːeɪ/",
+    opensNewTab: "opens in a new tab",
+    postsListTitle: "Articles",
   },
   zh: {
     greeting: "你好，我是",
@@ -73,6 +88,18 @@ const copy = {
     visitBlog: "访问博客",
     subscribe: "订阅 RSS",
     avatarAlt: "Sanae 的头像",
+    switchToDark: "切换至夜间模式",
+    switchToLight: "切换至日间模式",
+    skipToContent: "跳到主要内容",
+    sidebarLabel: "网站侧边栏",
+    primaryNavigation: "主要导航",
+    onlineProfiles: "在线平台",
+    languageSelector: "语言选择",
+    useEnglish: "Use English",
+    useChinese: "使用中文",
+    pronunciation: "读作 /'sɑːnɑːeɪ/",
+    opensNewTab: "在新标签页打开",
+    postsListTitle: "文章列表",
   },
 } as const;
 
@@ -100,8 +127,24 @@ const onlineLinks = [
   },
 ] as const;
 
+function readPreference(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function savePreference(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // The preference remains active for the current page when storage is unavailable.
+  }
+}
+
 function getInitialLanguage(): Language {
-  const stored = window.localStorage.getItem("sanae-language");
+  const stored = readPreference("sanae-language");
   if (stored === "en" || stored === "zh") return stored;
 
   const browserLanguages = [
@@ -117,6 +160,20 @@ function getInitialLanguage(): Language {
     );
 
   return hasChineseLanguage || hasChineseUserAgent ? "zh" : "en";
+}
+
+function getInitialTheme(): Theme {
+  const documentTheme = document.documentElement.dataset.theme;
+  if (documentTheme === "light" || documentTheme === "dark") {
+    return documentTheme;
+  }
+
+  const stored = readPreference("sanae-theme");
+  if (stored === "light" || stored === "dark") return stored;
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 function textFromMarkup(value: string): string {
@@ -186,6 +243,7 @@ function formatPostDate(value: string, language: Language) {
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [posts, setPosts] = useState<Post[]>([]);
   const [feedState, setFeedState] = useState<FeedState>("loading");
   const page = /^\/writings(?:\/|$)/.test(window.location.pathname)
@@ -199,8 +257,37 @@ export default function App() {
       page === "writings"
         ? `${text.writingsTitle} — Sanae`
         : "Sanae — Personal Homepage";
-    window.localStorage.setItem("sanae-language", language);
+    savePreference("sanae-language", language);
   }, [language, page, text.writingsTitle]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "dark" ? "#11161c" : "#f4f6f8");
+  }, [theme]);
+
+  useEffect(() => {
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+    const syncWithSystem = (event: MediaQueryListEvent) => {
+      const stored = readPreference("sanae-theme");
+      if (stored !== "light" && stored !== "dark") {
+        setTheme(event.matches ? "dark" : "light");
+      }
+    };
+
+    systemTheme.addEventListener("change", syncWithSystem);
+    return () => systemTheme.removeEventListener("change", syncWithSystem);
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "light" ? "dark" : "light";
+      savePreference("sanae-theme", next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (page !== "writings") return;
@@ -228,13 +315,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <a className="skip-link" href="#main-content">
+        {text.skipToContent}
+      </a>
+
+      <aside className="sidebar" aria-label={text.sidebarLabel}>
         <div className="sidebar-profile">
           <strong>Sanae</strong>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Primary navigation">
-          <div className="nav-group">
+        <div className="sidebar-nav">
+          <nav className="nav-group" aria-label={text.primaryNavigation}>
             <a
               className={`nav-link ${page === "home" ? "active" : ""}`}
               href="/"
@@ -251,10 +342,10 @@ export default function App() {
               <FaBookOpen aria-hidden="true" />
               <span>Writings</span>
             </a>
-          </div>
+          </nav>
 
-          <div className="nav-group online-group">
-            <h2>Online</h2>
+          <nav className="nav-group online-group" aria-labelledby="online-title">
+            <h2 id="online-title">Online</h2>
             {onlineLinks.map((link) => {
               const Icon = link.icon;
 
@@ -265,7 +356,7 @@ export default function App() {
                   href={link.href}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={`${link.name}: ${link.handle}`}
+                  aria-label={`${link.name}: ${link.handle}, ${text.opensNewTab}`}
                 >
                   <Icon className={link.iconClass} aria-hidden="true" />
                   <span>{link.name}</span>
@@ -275,10 +366,10 @@ export default function App() {
                 </a>
               );
             })}
-          </div>
-        </nav>
+          </nav>
+        </div>
 
-        <div className="sidebar-footer">
+        <footer className="sidebar-footer">
           <span>
             © {new Date().getFullYear()}{" "}
             <a href="mailto:hi@sanae.im" aria-label="Contact Sanae">
@@ -286,33 +377,70 @@ export default function App() {
             </a>
           </span>
           <span>All rights reserved.</span>
-        </div>
+        </footer>
       </aside>
 
       <div className="content-shell">
         <header className="page-header">
-          <h2>{page === "writings" ? "Recent Posts" : "Home"}</h2>
-          <div className="language-switch" aria-label="Language">
-            <button
-              type="button"
-              aria-pressed={language === "en"}
-              onClick={() => setLanguage("en")}
+          {page === "writings" ? (
+            <h1 id="page-title">Recent Posts</h1>
+          ) : (
+            <p className="page-context">Home</p>
+          )}
+          <div className="header-actions">
+            <div
+              className="language-switch"
+              role="group"
+              aria-label={text.languageSelector}
             >
-              Eng
-            </button>
-            <span aria-hidden="true">/</span>
+              <button
+                type="button"
+                aria-pressed={language === "en"}
+                aria-label={text.useEnglish}
+                lang="en"
+                onClick={() => setLanguage("en")}
+              >
+                Eng
+              </button>
+              <span aria-hidden="true">/</span>
+              <button
+                type="button"
+                aria-pressed={language === "zh"}
+                aria-label={text.useChinese}
+                lang="zh-CN"
+                onClick={() => setLanguage("zh")}
+              >
+                中文
+              </button>
+            </div>
             <button
+              className="theme-toggle"
               type="button"
-              aria-pressed={language === "zh"}
-              onClick={() => setLanguage("zh")}
+              onClick={toggleTheme}
+              aria-pressed={theme === "dark"}
+              aria-label={
+                theme === "light" ? text.switchToDark : text.switchToLight
+              }
+              title={
+                theme === "light" ? text.switchToDark : text.switchToLight
+              }
             >
-              中文
+              {theme === "light" ? (
+                <FaMoon aria-hidden="true" />
+              ) : (
+                <FaSun aria-hidden="true" />
+              )}
             </button>
           </div>
         </header>
 
         {page === "home" ? (
-          <main className="page-content">
+          <main
+            className="page-content"
+            id="main-content"
+            tabIndex={-1}
+            aria-labelledby="home-title"
+          >
             <section className="hero" aria-labelledby="home-title">
               <div>
                 <h1 id="home-title">
@@ -325,13 +453,16 @@ export default function App() {
                     </span>
                     <span
                       className="hero-pronunciation"
-                      aria-label="Pronunciation"
+                      aria-label={text.pronunciation}
                     >
                       /'sɑːnɑːeɪ/
                     </span>
                   </span>
                 </h1>
-                <div className="hero-links" aria-label="Online profiles">
+                <nav
+                  className="hero-links"
+                  aria-label={text.onlineProfiles}
+                >
                   {onlineLinks.map((link) => {
                     const Icon = link.icon;
 
@@ -341,13 +472,14 @@ export default function App() {
                         href={link.href}
                         target="_blank"
                         rel="noreferrer"
+                        aria-label={`${link.name}: ${link.handle}, ${text.opensNewTab}`}
                       >
                         <Icon className={link.iconClass} aria-hidden="true" />
                         <span>{link.name}</span>
                       </a>
                     );
                   })}
-                </div>
+                </nav>
               </div>
 
               <div className="portrait-wrap">
@@ -379,8 +511,13 @@ export default function App() {
             </section>
           </main>
         ) : (
-          <main className="page-content writings-content">
-            <section className="writings-hero">
+          <main
+            className="page-content writings-content"
+            id="main-content"
+            tabIndex={-1}
+            aria-labelledby="page-title"
+          >
+            <div className="writings-hero">
               <p className="writings-intro">
                 {text.writingsIntroPrefix}
                 <a
@@ -388,6 +525,7 @@ export default function App() {
                   href={BLOG_URL}
                   target="_blank"
                   rel="noreferrer"
+                  aria-label={`${text.writingsIntroLink}, ${text.opensNewTab}`}
                 >
                   {text.writingsIntroLink}
                 </a>
@@ -399,6 +537,7 @@ export default function App() {
                   href={BLOG_URL}
                   target="_blank"
                   rel="noreferrer"
+                  aria-label={`${text.visitBlog}, ${text.opensNewTab}`}
                 >
                   <span>{text.visitBlog}</span>
                   <span aria-hidden="true">↗</span>
@@ -408,17 +547,28 @@ export default function App() {
                   href={BLOG_FEED_URL}
                   target="_blank"
                   rel="noreferrer"
+                  aria-label={`${text.subscribe}, ${text.opensNewTab}`}
                 >
                   <FaRss aria-hidden="true" />
                   <span>{text.subscribe}</span>
                 </a>
               </div>
-            </section>
+            </div>
 
-            <section className="posts-section" aria-live="polite">
+            <section
+              className="posts-section"
+              aria-labelledby="posts-list-title"
+              aria-busy={feedState === "loading"}
+            >
+              <h2 className="visually-hidden" id="posts-list-title">
+                {text.postsListTitle}
+              </h2>
+
               {feedState === "loading" && (
                 <>
-                  <p className="posts-status">{text.loadingPosts}</p>
+                  <p className="posts-status" role="status">
+                    {text.loadingPosts}
+                  </p>
                   <div className="post-skeletons" aria-hidden="true">
                     <span />
                     <span />
@@ -428,48 +578,64 @@ export default function App() {
               )}
 
               {feedState === "error" && (
-                <div className="feed-message">
+                <div className="feed-message" role="status">
                   <p>{text.postsUnavailable}</p>
-                  <a href={BLOG_URL} target="_blank" rel="noreferrer">
+                  <a
+                    href={BLOG_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`${text.visitBlog}, ${text.opensNewTab}`}
+                  >
                     {text.visitBlog} ↗
                   </a>
                 </div>
               )}
 
               {feedState === "ready" && posts.length === 0 && (
-                <div className="feed-message">
+                <div className="feed-message" role="status">
                   <p>{text.noPosts}</p>
-                  <a href={BLOG_URL} target="_blank" rel="noreferrer">
+                  <a
+                    href={BLOG_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`${text.visitBlog}, ${text.opensNewTab}`}
+                  >
                     {text.visitBlog} ↗
                   </a>
                 </div>
               )}
 
               {feedState === "ready" && posts.length > 0 && (
-                <div className="post-list">
+                <ul className="post-list">
                   {posts.map((post) => {
                     const date = formatPostDate(post.date, language);
 
                     return (
-                      <a
-                        className="post-link"
-                        href={post.url}
-                        key={`${post.url}-${post.date}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <time dateTime={date?.dateTime}>{date?.label}</time>
-                        <span className="post-copy">
-                          <strong>{post.title}</strong>
-                          {post.summary && <small>{post.summary}</small>}
-                        </span>
-                        <span className="post-arrow" aria-hidden="true">
-                          ↗
-                        </span>
-                      </a>
+                      <li key={`${post.url}-${post.date}`}>
+                        <a
+                          className="post-link"
+                          href={post.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`${post.title}${
+                            date ? `, ${date.label}` : ""
+                          }, ${text.opensNewTab}`}
+                        >
+                          {date && (
+                            <time dateTime={date.dateTime}>{date.label}</time>
+                          )}
+                          <span className="post-copy">
+                            <strong>{post.title}</strong>
+                            {post.summary && <small>{post.summary}</small>}
+                          </span>
+                          <span className="post-arrow" aria-hidden="true">
+                            ↗
+                          </span>
+                        </a>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </section>
           </main>
